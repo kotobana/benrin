@@ -1,0 +1,8 @@
+import {defineConfig} from 'vite';
+import {mkdir,readFile,writeFile,rename} from 'node:fs/promises';
+import {emptyState,validState} from './src/model';
+import type { Connect } from 'vite';
+function localApi(server: {middlewares: Connect.Server}) {let queue=Promise.resolve();server.middlewares.use('/api/state',(req,res)=>{queue=queue.then(async()=>{res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');if(req.headers.origin&&req.headers.origin!==`http://${req.headers.host}`){res.statusCode=403;res.end('{}');return;}await mkdir('.local',{recursive:true});let data={state:emptyState(),revision:0};try{data=JSON.parse(await readFile('.local/state.json','utf8'));}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}
+if(req.method==='GET'){res.end(JSON.stringify(data));return;}if(req.method!=='PUT'){res.statusCode=405;res.end('{}');return;}let body='';for await(const chunk of req){body+=chunk;if(Buffer.byteLength(body)>2000000){res.statusCode=413;res.end('{}');return;}}let input;try{input=JSON.parse(body);}catch{res.statusCode=400;res.end('{}');return;}if(!validState(input.state)){res.statusCode=400;res.end('{}');return;}if(input.revision!==data.revision){res.statusCode=409;res.end('{}');return;}data={state:input.state,revision:data.revision+1};await writeFile('.local/state.tmp',JSON.stringify(data));await rename('.local/state.tmp','.local/state.json');res.end(JSON.stringify({revision:data.revision}));}).catch(()=>{res.statusCode=500;res.end(JSON.stringify({error:'保存に失敗しました'}));});});}
+export default defineConfig({plugins:[{name:'local-storage',configureServer:localApi,configurePreviewServer:localApi}]});
+
