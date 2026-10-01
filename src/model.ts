@@ -2,8 +2,7 @@ export type Routine = {id:string; title:string; frequency:'daily'|'weekly'|'mont
 export type Entry = {routineId:string; period:string; status:'done'|'skipped'; at:string; title:string};
 export type Note = {id:string; title:string; body:string; tags:string; bookId:string; updated:string};
 export type Book = {id:string; title:string; author:string; status:'unknown'|'unread'|'reading'|'read'; finished:string; rating:number; review:string; category?:string; genre?:string; medium?:string; summary?:string; readVolumes?:string; totalVolumes?:string; sourceStatus?:string; sourceUpdated?:string; sourceRows?:number[]; sourceSheet?:string; sourceId?:string};
-export type SchoolLink={id:string;title:string;url:string;category:'prepare'|'teach'|'review';description:string};
-export type State = {routines:Routine[]; entries:Entry[]; notes:Note[]; books:Book[]; schoolLinks?:SchoolLink[]};
+export type State = {routines:Routine[]; entries:Entry[]; notes:Note[]; books:Book[]};
 export const emptyState = ():State => ({routines:[],entries:[],notes:[],books:[]});
 export function today(now = new Date()):string {return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(now);}
 export function period(r:Routine,date:string):string {if(r.frequency==='daily')return date;if(r.frequency==='monthly')return date.slice(0,7);const d=new Date(date+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);return d.toISOString().slice(0,10);}
@@ -11,8 +10,6 @@ export function due(r:Routine,date:string):boolean {if(r.paused || date<r.create
 export function validState(value:unknown):value is State {
  if(!value||typeof value!=='object')return false;const s=value as State;const str=(v:unknown,max=100000)=>typeof v==='string'&&v.length<=max;const id=(v:unknown)=>str(v,100)&&!!v;const arr=(v:unknown)=>Array.isArray(v)&&v.length<=10000;
  if(![s.routines,s.entries,s.notes,s.books].every(arr))return false;
- const url=(v:string)=>{try{return ['http:','https:'].includes(new URL(v).protocol)}catch{return false}};
- if(s.schoolLinks!==undefined&&(!arr(s.schoolLinks)||!s.schoolLinks.every(l=>l&&id(l.id)&&str(l.title,200)&&str(l.description,1000)&&str(l.url,2000)&&url(l.url)&&['prepare','teach','review'].includes(l.category))))return false;
  if(!s.books.every(b=>b&&['category','genre','medium','summary','readVolumes','totalVolumes','sourceStatus','sourceUpdated','sourceSheet','sourceId'].every(k=>(b as unknown as Record<string,unknown>)[k]===undefined||str((b as unknown as Record<string,unknown>)[k]))&&(b.sourceRows===undefined||Array.isArray(b.sourceRows)&&b.sourceRows.every(x=>Number.isInteger(x)&&x>0))))return false;
  try{return s.routines.every(r=>id(r.id)&&str(r.title,200)&&['daily','weekly','monthly'].includes(r.frequency)&&Array.isArray(r.weekdays)&&r.weekdays.every(d=>Number.isInteger(d)&&d>=0&&d<=6)&&Number.isInteger(r.day)&&r.day>=0&&r.day<=31&&typeof r.paused==='boolean'&&str(r.created,40))&&s.entries.every(e=>id(e.routineId)&&str(e.period,10)&&['done','skipped'].includes(e.status)&&str(e.at,40)&&str(e.title,200))&&s.notes.every(n=>id(n.id)&&str(n.title,200)&&str(n.body)&&str(n.tags,500)&&str(n.bookId,100)&&str(n.updated,40))&&s.books.every(b=>id(b.id)&&str(b.title,200)&&str(b.author,200)&&['unknown','unread','reading','read'].includes(b.status)&&str(b.finished,10)&&Number.isInteger(b.rating)&&b.rating>=0&&b.rating<=5&&str(b.review))&&[s.routines,s.notes,s.books].every(a=>new Set(a.map(x=>x.id)).size===a.length);}catch{return false;}
 }

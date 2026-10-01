@@ -3,7 +3,6 @@ import {createRoot} from 'react-dom/client';
 import {BookOpen,Check,CheckCheck,ChevronRight,Download,Home,Leaf,NotebookPen,Plus,Search,Settings,Sun,Trash2,X} from 'lucide-react';
 import {type State,type Routine,type Note,type Book,emptyState,today,period,due,validState} from './model';
 import './style.css';
-import {Workspace} from './Workspace';
 const uid=()=>crypto.randomUUID();
 const labels={daily:'日課',weekly:'週課',monthly:'月課',unknown:'未設定',unread:'未読',reading:'読書中',read:'読了'};
 function App(){
@@ -14,7 +13,6 @@ function App(){
  useEffect(()=>{const f=(e:BeforeUnloadEvent)=>{if(latest.current!==persisted.current){e.preventDefault();e.returnValue='';}};window.addEventListener('beforeunload',f);return()=>window.removeEventListener('beforeunload',f);},[]);
  async function flush(){if(saving.current||latest.current===persisted.current)return;saving.current=true;setSave('保存中…');const snapshot=latest.current;try{const r=await fetch('/api/state',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({state:snapshot,revision:revision.current})});if(r.status===409)throw Error('別の画面で更新されています。設定から未保存データを書き出してから、再読み込みしてください。');if(!r.ok)throw Error('保存できませんでした。接続を確認して「再試行」を押してください。');revision.current=(await r.json()).revision;persisted.current=snapshot;setError('');setSave('保存済み');}catch(e){setError((e as Error).message);setSave('未保存');saving.current=false;return;}saving.current=false;if(latest.current!==persisted.current)void flush();}
  function update(fn:(s:State)=>State){const next=fn(latest.current);latest.current=next;setData(next);setSave('未保存');if(timer.current)clearTimeout(timer.current);timer.current=setTimeout(()=>void flush(),550);}
- useEffect(()=>{const block=(e:Event)=>{if(latest.current!==persisted.current){e.preventDefault();setError('未保存の変更があります。保存済みになってからスペースを切り替えてください。');void flush();}};window.addEventListener('benrin:beforeNavigate',block);return()=>window.removeEventListener('benrin:beforeNavigate',block);},[]);
  function navigate(p:string){setPage(p);setQuery('');setFilter('all');setCategory('all');}
  function open(kind:'routine'|'note'|'book',id=''){setEditing(id);if(kind==='routine')setRoutine(data.routines.find(x=>x.id===id)||{id:uid(),title:'',frequency:'daily',weekdays:[],day:0,paused:false,created:date});if(kind==='note')setNote(data.notes.find(x=>x.id===id)||{id:uid(),title:'',body:'',tags:'',bookId:'',updated:new Date().toISOString()});if(kind==='book')setBook(data.books.find(x=>x.id===id)||{id:uid(),title:'',author:'',status:'unread',finished:'',rating:0,review:''});setModal(kind);}
  function storeItem(kind:'routine'|'note'|'book',value:Routine|Note|Book){update(s=>{if(kind==='routine')return {...s,routines:[...s.routines.filter(x=>x.id!==value.id),value as Routine]};if(kind==='note')return {...s,notes:[...s.notes.filter(x=>x.id!==value.id),{...value,updated:new Date().toISOString()} as Note]};return {...s,books:[...s.books.filter(x=>x.id!==value.id),value as Book]};});}
@@ -45,4 +43,4 @@ function App(){
  <div className="modal-actions">{(editing||modal==='note'&&data.notes.some(n=>n.id===note.id))&&<button type="button" className="danger" onClick={()=>remove(modal,modal==='routine'?routine.id:modal==='note'?note.id:book.id)}><Trash2 size={16}/>削除</button>}<button className="primary" type="submit">{modal==='note'?'保存して閉じる':'保存する'}</button></div></form></section></div>}
  </div>;
 }
-createRoot(document.getElementById('root')!).render(<Workspace><App/></Workspace>);
+createRoot(document.getElementById('root')!).render(<App/>);
