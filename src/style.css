@@ -9,6 +9,19 @@
 .pill-group{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.pill-btn{border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:11px;background:var(--panel);color:var(--ink)}.pill-btn.active{background:var(--soft);color:var(--green);border-color:var(--green);font-weight:650}
 .form-type-toggle{display:flex;gap:10px;margin-bottom:18px}.form-type-toggle button{flex:1;padding:10px;border-radius:8px;font-weight:600;font-size:12px;border:1px solid var(--line);background:var(--panel)}.form-type-toggle button.active.expense{background:#faeae7;color:#b14d3f;border-color:#eac5bf}.form-type-toggle button.active.income{background:#e8f4ec;color:#2e6a48;border-color:#b9dec5}
 @media(max-width:900px){.finance-summary,.day-sections{grid-template-columns:1fr}.cal-cell{min-height:68px;padding:5px}.cal-spent{font-size:8px}.cal-nmd{font-size:7px}}
+.badge.once{background:#fbeee0;color:#a46b32}
+.badge.planned{background:#fdf5e6;color:#b27a2b;border:1px dashed #dcb878}
+.cal-plan-spent{font-size:9px;font-weight:600;color:#b27a2b;margin-top:1px}
+.cal-routine-tag{font-size:9px;background:#eef1ec;color:#4b6650;padding:1px 4px;border-radius:3px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px}
+.cal-routine-tag.once{background:#faede0;color:#9c6020;font-weight:600}
+.cal-routine-tag.done{opacity:.6;text-decoration:line-through}
+.tx-row.planned{background:#fffcf7;border-left:3px dashed #caa265}
+.tx-planned-badge{background:#fdf2df;color:#a46b28;border:1px dashed #cfb078;font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px}
+.tx-confirm-btn{border:1px solid #6d8b5d;background:#eef5ea;color:#3b5a3e;font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-weight:600}
+.tx-confirm-btn:hover{background:#dcecd4}
+.day-head-actions{display:flex;gap:8px;flex-wrap:wrap}
+.quick-add-btn{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:6px 12px;border-radius:6px;border:1px dashed var(--muted);background:var(--panel);color:var(--muted);cursor:pointer}
+.quick-add-btn:hover{border-color:var(--green);color:var(--green);background:var(--soft)}
 
 
 

@@ -5,7 +5,7 @@ import {type State,type Routine,type Note,type Book,type Transaction,type Budget
 import './style.css';
 
 const uid=()=>crypto.randomUUID();
-const labels={daily:'日課',weekly:'週課',monthly:'月課',unknown:'未設定',unread:'未読',reading:'読書中',read:'読了'};
+const labels={daily:'日課',weekly:'週課',monthly:'月課',once:'一回きり',unknown:'未設定',unread:'未読',reading:'読書中',read:'読了'};
 
 function App(){
  const [data,setData]=useState<State>(emptyState()),[page,setPage]=useState('home'),[query,setQuery]=useState(''),[ready,setReady]=useState(false),[save,setSave]=useState('読み込み中'),[error,setError]=useState(''),[date,setDate]=useState(today()),[modal,setModal]=useState<'routine'|'note'|'book'|'tx'|'budget'|null>(null),[editing,setEditing]=useState(''),[filter,setFilter]=useState('all'),[category,setCategory]=useState('all'),[dark,setDark]=useState(localStorage.getItem('benrin-theme')==='dark');
@@ -15,7 +15,7 @@ function App(){
  const [routine,setRoutine]=useState<Routine>({id:'',title:'',frequency:'daily',weekdays:[],day:0,paused:false,created:today()});
  const [note,setNote]=useState<Note>({id:'',title:'',body:'',tags:'',bookId:'',updated:''});
  const [book,setBook]=useState<Book>({id:'',title:'',author:'',status:'unread',finished:'',rating:0,review:''});
- const [tx,setTx]=useState<Transaction>({id:'',date:today(),type:'expense',amount:0,category:'食費',memo:''});
+ const [tx,setTx]=useState<Transaction>({id:'',date:today(),type:'expense',amount:0,category:'食費',memo:'',status:'confirmed'});
  const [budgetInput,setBudgetInput]=useState(0);
 
  useEffect(()=>{
@@ -60,15 +60,22 @@ function App(){
 
  function open(kind:'routine'|'note'|'book'|'tx'|'budget',id='',presetDate=''){
    setEditing(id);
-   if(kind==='routine')setRoutine(data.routines.find(x=>x.id===id)||{id:uid(),title:'',frequency:'daily',weekdays:[],day:0,paused:false,created:date});
+   if(kind==='routine'){
+     const found=data.routines.find(x=>x.id===id);
+     setRoutine(found||{id:uid(),title:'',frequency:presetDate?'once':'daily',targetDate:presetDate||date,weekdays:[],day:0,paused:false,created:date});
+   }
    if(kind==='note')setNote(data.notes.find(x=>x.id===id)||{id:uid(),title:'',body:'',tags:'',bookId:'',updated:new Date().toISOString()});
    if(kind==='book')setBook(data.books.find(x=>x.id===id)||{id:uid(),title:'',author:'',status:'unread',finished:'',rating:0,review:''});
    if(kind==='tx'){
      const found=data.transactions?.find(x=>x.id===id);
-     setTx(found||{id:uid(),date:presetDate||date,type:'expense',amount:0,category:'食費',memo:''});
+     setTx(found||{id:uid(),date:presetDate||date,type:'expense',amount:0,category:'食費',memo:'',status:presetDate&&presetDate>date?'planned':'confirmed'});
    }
    if(kind==='budget')setBudgetInput(data.budget?.monthlyTarget||0);
    setModal(kind);
+ }
+
+ function confirmTx(target:Transaction){
+   storeItem('tx',{...target,status:'confirmed'});
  }
 
  function storeItem(kind:'routine'|'note'|'book'|'tx',value:Routine|Note|Book|Transaction){
@@ -103,7 +110,7 @@ function App(){
      if(r.financial&&r.financial.autoRecord&&r.financial.amount>0){
        if(status==='done'&&!isUnchecking){
          if(!txs.some(t=>t.routineId===r.id&&t.date===date)){
-           txs=[...txs,{id:uid(),date,type:r.financial.type,amount:r.financial.amount,category:r.financial.category,memo:`${r.title}（日課連動）`,routineId:r.id}];
+           txs=[...txs,{id:uid(),date,type:r.financial.type,amount:r.financial.amount,category:r.financial.category,memo:`${r.title}（日課連動）`,routineId:r.id,status:'confirmed'}];
          }
        }else if(isUnchecking){
          txs=txs.filter(t=>!(t.routineId===r.id&&t.date===date));
@@ -119,8 +126,10 @@ function App(){
 
  // Monthly finances calculation
  const currentMonthTxs=txList.filter(t=>t.date.startsWith(calMonth));
- const monthExpense=currentMonthTxs.filter(t=>t.type==='expense').reduce((sum,t)=>sum+t.amount,0);
- const monthIncome=currentMonthTxs.filter(t=>t.type==='income').reduce((sum,t)=>sum+t.amount,0);
+ const monthExpense=currentMonthTxs.filter(t=>t.type==='expense'&&t.status!=='planned').reduce((sum,t)=>sum+t.amount,0);
+ const monthPlannedExpense=currentMonthTxs.filter(t=>t.type==='expense'&&t.status==='planned').reduce((sum,t)=>sum+t.amount,0);
+ const monthIncome=currentMonthTxs.filter(t=>t.type==='income'&&t.status!=='planned').reduce((sum,t)=>sum+t.amount,0);
+ const monthPlannedIncome=currentMonthTxs.filter(t=>t.type==='income'&&t.status==='planned').reduce((sum,t)=>sum+t.amount,0);
 
  // Category breakdown
  const catTotals:Record<string,number>={};
@@ -148,9 +157,20 @@ function App(){
 
  function routineRow(r:Routine){
    const entry=data.entries.find(e=>e.routineId===r.id&&e.period===period(r,date));
+   const subText = r.paused
+     ? '一時停止中'
+     : entry?.status==='skipped'
+     ? '今回はスキップ'
+     : r.frequency==='once'
+     ? `予定日: ${r.targetDate||'未定'}`
+     : r.frequency==='monthly'
+     ? (r.day?`毎月${r.day}日から`:'月内に1回')
+     : r.frequency==='daily'&&r.weekdays.length
+     ? r.weekdays.map(d=>'日月火水木金土'[d]).join('・')+'曜日'
+     : labels[r.frequency];
    return <div className={'routine-row '+(entry?'completed':'')} key={r.id}>
      <button className={'check '+(entry?.status==='done'?'checked':'')} disabled={r.paused||!due(r,date)} aria-label={r.title+'を'+(entry?.status==='done'?'未完了に戻す':'完了にする')} onClick={()=>mark(r,'done')}>{entry?.status==='done'&&<Check size={17}/>}</button>
-     <button className="row-title" onClick={()=>open('routine',r.id)}>{r.title}<small>{r.paused?'一時停止中':entry?.status==='skipped'?'今回はスキップ':r.frequency==='monthly'?(r.day?`毎月${r.day}日から`:'月内に1回'):r.frequency==='daily'&&r.weekdays.length?r.weekdays.map(d=>'日月火水木金土'[d]).join('・')+'曜日':labels[r.frequency]}{r.financial&&` · ¥${r.financial.amount.toLocaleString()}`}</small></button>
+     <button className="row-title" onClick={()=>open('routine',r.id)}>{r.title}<small>{subText}{r.financial&&` · ¥${r.financial.amount.toLocaleString()}`}</small></button>
      <span className={'badge '+r.frequency}>{labels[r.frequency]}</span>
      <button className="quiet skip" disabled={r.paused||!due(r,date)} onClick={()=>mark(r,'skipped')}>{entry?.status==='skipped'?'戻す':'スキップ'}</button>
    </div>;
@@ -237,47 +257,75 @@ function App(){
             <button className="pill-btn" onClick={()=>setCalMonth(today().slice(0,7))}>今月</button>
           </div>
           <div style={{fontSize:'12px',color:'var(--muted)'}}>
-            今月の支出: <strong style={{color:'var(--ink)',fontSize:'14px'}}>¥{monthExpense.toLocaleString()}</strong> ｜ ノーマネーデー: <strong style={{color:'var(--green)'}}>{nmdCount}日</strong>
+            今月の支出: <strong style={{color:'var(--ink)',fontSize:'14px'}}>¥{monthExpense.toLocaleString()}</strong>
+            {monthPlannedExpense>0&&<span style={{color:'#b27a2b',marginLeft:'6px'}}>（予定: +¥{monthPlannedExpense.toLocaleString()}）</span>}
+            {' ｜ '}ノーマネーデー: <strong style={{color:'var(--green)'}}>{nmdCount}日</strong>
           </div>
         </div>
 
         <div className="cal-grid">
           {['月','火','水','木','金','土','日'].map(d=><div className="cal-day-head" key={d}>{d}</div>)}
           {calGrid.map(d=>{
-            const dayTxs=txList.filter(t=>t.date===d.date&&t.type==='expense');
-            const dayTotal=dayTxs.reduce((sum,t)=>sum+t.amount,0);
+            const dayConfirmedTxs=txList.filter(t=>t.date===d.date&&t.type==='expense'&&t.status!=='planned');
+            const dayPlannedTxs=txList.filter(t=>t.date===d.date&&t.type==='expense'&&t.status==='planned');
+            const dayTotal=dayConfirmedTxs.reduce((sum,t)=>sum+t.amount,0);
+            const dayPlannedTotal=dayPlannedTxs.reduce((sum,t)=>sum+t.amount,0);
             const dayEntries=data.entries.filter(e=>e.at.startsWith(d.date)&&e.status==='done');
-            const isNmd=d.date<=date&&d.isCurrentMonth&&dayTotal===0;
+            const dayOnceRoutines=data.routines.filter(r=>r.frequency==='once'&&r.targetDate===d.date);
+            const isNmd=d.date<=date&&d.isCurrentMonth&&dayTotal===0&&dayPlannedTotal===0;
             return <div className={`cal-cell ${!d.isCurrentMonth?'other-month':''} ${d.isToday?'today':''} ${d.date===selectedDate?'selected':''}`} key={d.date} onClick={()=>setSelectedDate(d.date)}>
               <span className="cal-num">{d.dayNumber}</span>
               <div className="cal-dots">
                 {dayEntries.slice(0,3).map((_,i)=><span className="cal-dot" key={i}/>)}
               </div>
-              {dayTotal>0?<span className="cal-spent">¥{dayTotal.toLocaleString()}</span>:isNmd?<span className="cal-nmd">NMD</span>:null}
+              {dayOnceRoutines.slice(0,2).map(r=>{
+                const isDone=data.entries.some(e=>e.routineId===r.id&&e.period===(r.targetDate||d.date)&&e.status==='done');
+                return <span className={`cal-routine-tag once ${isDone?'done':''}`} key={r.id} title={r.title}>{r.title}</span>;
+              })}
+              {dayTotal>0&&<span className="cal-spent">¥{dayTotal.toLocaleString()}</span>}
+              {dayPlannedTotal>0&&<span className="cal-plan-spent">予 ¥{dayPlannedTotal.toLocaleString()}</span>}
+              {dayTotal===0&&dayPlannedTotal===0&&isNmd&&<span className="cal-nmd">NMD</span>}
             </div>;
           })}
         </div>
 
         <div className="day-drawer">
           <h3>
-            <span>{new Date(selectedDate+'T00:00:00+09:00').toLocaleDateString('ja-JP',{timeZone:'Asia/Tokyo',month:'long',day:'numeric',weekday:'long'})} の記録</span>
-            <button className="primary" onClick={()=>open('tx','',selectedDate)}><Plus size={15}/>この日の出費を追加</button>
+            <span>{new Date(selectedDate+'T00:00:00+09:00').toLocaleDateString('ja-JP',{timeZone:'Asia/Tokyo',month:'long',day:'numeric',weekday:'long'})} の記録・予定</span>
+            <div className="day-head-actions">
+              <button className="quick-add-btn" onClick={()=>open('routine','',selectedDate)}><Plus size={14}/>予定・日課を追加</button>
+              <button className="primary" onClick={()=>open('tx','',selectedDate)}><Plus size={14}/>出費を記録・予定</button>
+            </div>
           </h3>
           <div className="day-sections">
             <div>
-              <h4>完了した習慣・日課</h4>
+              <h4>予定と日課</h4>
+              {data.routines.filter(r=>r.frequency==='once'&&r.targetDate===selectedDate).length>0&&<div style={{marginBottom:'14px'}}>
+                <div style={{fontSize:'10px',letterSpacing:'1px',fontWeight:700,color:'var(--muted)',marginBottom:'6px'}}>【この日の予定】</div>
+                <div className="panel">{data.routines.filter(r=>r.frequency==='once'&&r.targetDate===selectedDate).map(routineRow)}</div>
+              </div>}
+              <div style={{fontSize:'10px',letterSpacing:'1px',fontWeight:700,color:'var(--muted)',marginBottom:'6px'}}>【完了した日課・習慣】</div>
               {data.entries.filter(e=>e.at.startsWith(selectedDate)&&e.status==='done').length===0?
-                <p style={{fontSize:'12px',color:'var(--muted)'}}>この日の完了記録はありません。</p>:
+                <p style={{fontSize:'12px',color:'var(--muted)',margin:'8px 0'}}>完了記録はありません。</p>:
                 data.entries.filter(e=>e.at.startsWith(selectedDate)&&e.status==='done').map((e,i)=><div key={i} style={{padding:'8px 0',fontSize:'12px',borderBottom:'1px solid var(--line)'}}>✓ {e.title}</div>)
               }
             </div>
             <div>
-              <h4>この日の収支</h4>
+              <h4>この日の収支・予定出費</h4>
               {txList.filter(t=>t.date===selectedDate).length===0?
-                <p style={{fontSize:'12px',color:'var(--muted)'}}>出費はありません（ノーマネーデー 🎉）。</p>:
-                txList.filter(t=>t.date===selectedDate).map(t=><div key={t.id} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',fontSize:'12px',borderBottom:'1px solid var(--line)'}}>
-                  <span><span className="tx-cat">{t.category}</span> {t.memo||t.category}</span>
-                  <strong className={'tx-amt '+t.type}>{t.type==='expense'?'-':'+'}¥{t.amount.toLocaleString()}</strong>
+                <p style={{fontSize:'12px',color:'var(--muted)',margin:'8px 0'}}>出費はありません（ノーマネーデー 🎉）。</p>:
+                txList.filter(t=>t.date===selectedDate).map(t=><div key={t.id} className={`tx-row ${t.status==='planned'?'planned':''}`} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 0',fontSize:'12px',borderBottom:'1px solid var(--line)'}}>
+                  <span style={{display:'flex',alignItems:'center',gap:'6px',flex:1,minWidth:0}}>
+                    {t.status==='planned'&&<span className="tx-planned-badge">予定</span>}
+                    <span className="tx-cat">{t.category}</span>
+                    <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.memo||t.category}</span>
+                  </span>
+                  <span style={{display:'flex',alignItems:'center',gap:'8px'}}>
+                    <strong className={'tx-amt '+t.type}>{t.type==='expense'?'-':'+'}¥{t.amount.toLocaleString()}</strong>
+                    {t.status==='planned'&&<button type="button" className="tx-confirm-btn" onClick={()=>confirmTx(t)}>確定する</button>}
+                    <button className="quiet" onClick={()=>open('tx',t.id)}>編集</button>
+                    <button className="quiet" onClick={()=>remove('tx',t.id)}><Trash2 size={13}/></button>
+                  </span>
                 </div>)
               }
             </div>
@@ -290,7 +338,7 @@ function App(){
           <div>
             <p className="eyebrow">HOUSEHOLD FINANCES</p>
             <h1>家計簿</h1>
-            <p>日々の出費と暮らしのリズムを、シンプルに整える。</p>
+            <p>日々の出費とこれからの予定を、シンプルに整える。</p>
           </div>
           <div style={{display:'flex',gap:'10px'}}>
             <button className="secondary" onClick={()=>open('budget')}><Settings size={16}/>予算設定</button>
@@ -309,7 +357,8 @@ function App(){
               </div>
             </div>
             <div className="finance-total expense">¥{monthExpense.toLocaleString()}</div>
-            {monthIncome>0&&<div style={{fontSize:'12px',color:'var(--muted)'}}>（今月の収入: ¥{monthIncome.toLocaleString()}）</div>}
+            {monthPlannedExpense>0&&<div style={{fontSize:'12px',color:'#b27a2b',marginBottom:'4px'}}>予定出費: +¥{monthPlannedExpense.toLocaleString()}（見込み計: ¥{(monthExpense+monthPlannedExpense).toLocaleString()}）</div>}
+            {monthIncome>0&&<div style={{fontSize:'12px',color:'var(--muted)'}}>（今月の確定収入: ¥{monthIncome.toLocaleString()}{monthPlannedIncome>0?` · 予定収入: +¥${monthPlannedIncome.toLocaleString()}`:''}）</div>}
             {data.budget&&data.budget.monthlyTarget>0&&<>
               <div className={`budget-bar ${monthExpense>data.budget.monthlyTarget?'over':''}`}>
                 <i style={{width:`${Math.min(100,(monthExpense/data.budget.monthlyTarget)*100)}%`}}/>
@@ -322,7 +371,7 @@ function App(){
           </div>
 
           <div className="finance-card">
-            <h3>カテゴリ別内訳</h3>
+            <h3>カテゴリ別内訳（確定分）</h3>
             <div className="category-bars">
               {sortedCats.length===0?<p style={{fontSize:'12px',color:'var(--muted)'}}>今月の支出データはありません。</p>:
                 sortedCats.map(([cat,amt])=><div className="cat-row" key={cat}>
@@ -339,19 +388,32 @@ function App(){
           <label className="search"><Search size={17}/><input aria-label="支出の検索" placeholder="メモやカテゴリで検索…" value={query} onChange={e=>setQuery(e.target.value)}/></label>
           <select aria-label="種類の絞り込み" value={filter} onChange={e=>setFilter(e.target.value)}>
             <option value="all">すべての収支</option>
-            <option value="expense">支出のみ</option>
+            <option value="expense">支出（確定）</option>
+            <option value="planned">予定出費のみ</option>
             <option value="income">収入のみ</option>
           </select>
         </div>
 
         <div className="tx-list">
-          {currentMonthTxs.filter(t=>(filter==='all'||t.type===filter)&&matches(t.category,t.memo)).length===0?
+          {currentMonthTxs.filter(t=>{
+            if(filter==='expense') return t.type==='expense'&&t.status!=='planned';
+            if(filter==='planned') return t.status==='planned';
+            if(filter==='income') return t.type==='income';
+            return true;
+          }).filter(t=>matches(t.category,t.memo)).length===0?
             <p className="empty">該当する取引がありません。</p>:
-            currentMonthTxs.filter(t=>(filter==='all'||t.type===filter)&&matches(t.category,t.memo)).sort((a,b)=>b.date.localeCompare(a.date)).map(t=><div className="tx-row" key={t.id}>
+            currentMonthTxs.filter(t=>{
+              if(filter==='expense') return t.type==='expense'&&t.status!=='planned';
+              if(filter==='planned') return t.status==='planned';
+              if(filter==='income') return t.type==='income';
+              return true;
+            }).filter(t=>matches(t.category,t.memo)).sort((a,b)=>b.date.localeCompare(a.date)).map(t=><div className={`tx-row ${t.status==='planned'?'planned':''}`} key={t.id}>
               <span className="tx-date">{t.date.slice(5)}</span>
+              {t.status==='planned'&&<span className="tx-planned-badge">予定</span>}
               <span className="tx-cat">{t.category}</span>
               <span className="tx-memo">{t.memo||t.category}{t.routineId&&<small style={{color:'var(--muted)',marginLeft:'8px'}}>（日課）</small>}</span>
               <span className={'tx-amt '+t.type}>{t.type==='expense'?'-':'+'}¥{t.amount.toLocaleString()}</span>
+              {t.status==='planned'&&<button type="button" className="tx-confirm-btn" onClick={()=>confirmTx(t)}>確定する</button>}
               <button className="quiet" onClick={()=>open('tx',t.id)}>編集</button>
               <button className="quiet" onClick={()=>remove('tx',t.id)}><Trash2 size={14}/></button>
             </div>)
@@ -361,7 +423,7 @@ function App(){
 
       {page==='routines'&&<>
         <div className="page-heading">
-          <div><p className="eyebrow">YOUR LITTLE TOOLBOX</p><h1>日課・週課・月課</h1><p>小さな積み重ねを、自分のリズムで。</p></div>
+          <div><p className="eyebrow">YOUR LITTLE TOOLBOX</p><h1>日課・週課・月課・予定</h1><p>小さな積み重ねを、自分のリズムで。</p></div>
           <button className="primary" onClick={()=>open('routine')}><Plus size={17}/>追加する</button>
         </div>
         <div className="toolbar">
@@ -371,6 +433,7 @@ function App(){
             <option value="daily">日課</option>
             <option value="weekly">週課</option>
             <option value="monthly">月課</option>
+            <option value="once">予定（一回きり）</option>
             <option value="history">実行履歴</option>
           </select>
         </div>
@@ -433,15 +496,19 @@ function App(){
         setModal(null);
       }}>
         {modal==='routine'&&<>
-          <label>名前<input autoFocus required maxLength={200} value={routine.title} onChange={e=>setRoutine({...routine,title:e.target.value})} placeholder="例：20分、本を読む"/></label>
-          <label>繰り返し<select value={routine.frequency} onChange={e=>setRoutine({...routine,frequency:e.target.value as Routine['frequency']})}>{(['daily','weekly','monthly'] as const).map(v=><option value={v} key={v}>{labels[v]}</option>)}</select></label>
+          <label>名前<input autoFocus required maxLength={200} value={routine.title} onChange={e=>setRoutine({...routine,title:e.target.value})} placeholder="例：20分、本を読む、歯医者"/></label>
+          <label>繰り返し・予定の種別<select value={routine.frequency} onChange={e=>setRoutine({...routine,frequency:e.target.value as Routine['frequency'],targetDate:routine.targetDate||date})}>{(['daily','weekly','monthly','once'] as const).map(v=><option value={v} key={v}>{v==='once'?'一回きり（日付指定）':labels[v]}</option>)}</select></label>
+          {routine.frequency==='once'&&<>
+            <label>予定日<input type="date" required value={routine.targetDate||date} onChange={e=>setRoutine({...routine,targetDate:e.target.value})}/></label>
+            <p className="help">指定した日（カレンダーやホーム画面）にタスクとして表示されます。</p>
+          </>}
           {routine.frequency==='daily'&&<fieldset><legend>曜日（未選択なら毎日）</legend><div className="weekdays">{Array.from('日月火水木金土').map((d,i)=><button className={routine.weekdays.includes(i)?'primary':'secondary'} type="button" key={d} aria-pressed={routine.weekdays.includes(i)} onClick={()=>setRoutine({...routine,weekdays:routine.weekdays.includes(i)?routine.weekdays.filter(x=>x!==i):[...routine.weekdays,i]})}>{d}</button>)}</div></fieldset>}
           {routine.frequency==='weekly'&&<p className="help">月曜から日曜までの間に1回。翌週には新しいチェック欄になります。</p>}
           {routine.frequency==='monthly'&&<label>取り組む日<select value={routine.day} onChange={e=>setRoutine({...routine,day:Number(e.target.value)})}><option value={0}>月内に1回（いつでも）</option>{Array.from({length:31},(_,i)=><option key={i} value={i+1}>{i===30?'月末（31日）':`${i+1}日から月末まで`}</option>)}</select><small>指定日がない月は、その月の最終日に表示します。</small></label>}
           <label className="checkbox-label"><input type="checkbox" checked={routine.paused} onChange={e=>setRoutine({...routine,paused:e.target.checked})}/>一時停止する</label>
           
           <fieldset style={{marginTop:'15px'}}>
-            <legend>家計簿と連動（固定費・定期出費）</legend>
+            <legend>家計簿と連動（固定費・予定出費）</legend>
             <label className="checkbox-label"><input type="checkbox" checked={!!routine.financial} onChange={e=>setRoutine({...routine,financial:e.target.checked?{type:'expense',amount:0,category:'住まい・固定費',autoRecord:true}:undefined})}/>完了時に家計簿へ記帳する</label>
             {routine.financial&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'10px',marginTop:'10px'}}>
               <label>金額（円）<input type="number" min="0" required value={routine.financial.amount||''} onChange={e=>setRoutine({...routine,financial:{...routine.financial!,amount:Number(e.target.value)}})}/></label>
@@ -457,11 +524,15 @@ function App(){
           </div>
           <label>金額（円）<input type="number" autoFocus required min="0" style={{fontSize:'22px',fontWeight:700}} value={tx.amount||''} onChange={e=>setTx({...tx,amount:Number(e.target.value)})} placeholder="0"/></label>
           <label>日付<input type="date" required value={tx.date} onChange={e=>setTx({...tx,date:e.target.value})}/></label>
+          <label className="checkbox-label" style={{marginTop:'4px',marginBottom:'16px'}}>
+            <input type="checkbox" checked={tx.status==='planned'} onChange={e=>setTx({...tx,status:e.target.checked?'planned':'confirmed'})}/>
+            予定として保存する（未確定の見込み出費）
+          </label>
           <label>カテゴリ</label>
           <div className="pill-group">
             {DEFAULT_CATEGORIES.map(c=><button type="button" key={c} className={`pill-btn ${tx.category===c?'active':''}`} onClick={()=>setTx({...tx,category:c})}>{c}</button>)}
           </div>
-          <label>メモ<input maxLength={1000} value={tx.memo} onChange={e=>setTx({...tx,memo:e.target.value})} placeholder="例: スーパーで食材、カフェ"/></label>
+          <label>メモ<input maxLength={1000} value={tx.memo} onChange={e=>setTx({...tx,memo:e.target.value})} placeholder="例: スーパーで食材、カフェ、チケット代"/></label>
           {data.books.length>0&&<label>関連する本（任意）<select value={tx.bookId||''} onChange={e=>setTx({...tx,bookId:e.target.value})}><option value="">紐づけない</option>{data.books.map(b=><option value={b.id} key={b.id}>{b.title}</option>)}</select></label>}
         </>}
 
