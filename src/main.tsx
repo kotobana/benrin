@@ -472,6 +472,12 @@ function App(){
         <input aria-label="バックアップを選択" type="file" accept=".json" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;try{if(file.size>2000000)throw Error('ファイルが大きすぎます。');const v=JSON.parse(await file.text());if(v.format!=='benrin-v1'||!validState(v.state))throw Error('benrinのバックアップではありません。');if(confirm('現在のデータをバックアップの内容に置き換えますか？'))update(()=>v.state);}catch(err){setError((err as Error).message);}e.target.value='';}}/>
         <h2>表示</h2>
         <button className="secondary" onClick={()=>setDark(!dark)}>{dark?'ライトモードにする':'ダークモードにする'}</button>
+        <h2>スマートフォンのホーム画面に追加（アプリ化）</h2>
+        <p>ブラウザのアドレスバーなしで、ネイティブアプリのように全画面で軽快に使えます。</p>
+        <ul style={{fontSize:'12px',lineHeight:'2',color:'var(--muted)',paddingLeft:'20px',margin:'10px 0'}}>
+          <li><strong>iPhone / iPad (Safari)</strong>: 画面下部の共有ボタン（四角に上矢印）をタップ → <strong>「ホーム画面に追加」</strong></li>
+          <li><strong>Android (Chrome)</strong>: 右上のメニュー（︙）をタップ → <strong>「アプリをインストール」</strong> または <strong>「ホーム画面に追加」</strong></li>
+        </ul>
       </div>}
 
       <footer>benrin <span>毎日を、少しだけ心地よく。</span><small>JAPAN STANDARD TIME</small></footer>
@@ -572,3 +578,9 @@ function App(){
 }
 
 createRoot(document.getElementById('root')!).render(<App/>);
+
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}

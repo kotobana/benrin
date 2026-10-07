@@ -23,5 +23,15 @@
 .quick-add-btn{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:6px 12px;border-radius:6px;border:1px dashed var(--muted);background:var(--panel);color:var(--muted);cursor:pointer}
 .quick-add-btn:hover{border-color:var(--green);color:var(--green);background:var(--soft)}
 
+@supports(padding-top:env(safe-area-inset-top)){
+  @media(max-width:700px){
+    aside{padding-top:calc(14px + env(safe-area-inset-top));padding-left:calc(14px + env(safe-area-inset-left));padding-right:calc(14px + env(safe-area-inset-right))}
+    header{padding-top:env(safe-area-inset-top)}
+    .modal{padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+    footer{padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+  }
+}
+
+
 
 
